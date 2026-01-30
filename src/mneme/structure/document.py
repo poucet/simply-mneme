@@ -40,7 +40,7 @@ class Tab:
     icon: Optional[str] = None
     content_markdown: Optional[str] = None
     referenced_assets: list[AssetId] = field(default_factory=list)
-    source_tab_id: Optional[TabId] = None
+    source_tab_id: Optional[str] = None
     current_revision_id: Optional[RevisionId] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

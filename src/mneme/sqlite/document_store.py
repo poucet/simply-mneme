@@ -51,7 +51,7 @@ class SqliteDocumentStore(DocumentStore):
             icon=row.icon,
             content_markdown=row.content_markdown,
             referenced_assets=[AssetId(a) for a in (row.referenced_assets or [])],
-            source_tab_id=parse_uuid(row.source_tab_id),
+            source_tab_id=row.source_tab_id,
             current_revision_id=parse_uuid(row.current_revision_id),
             created_at=epoch_ms_to_datetime(row.created_at),
             updated_at=epoch_ms_to_datetime(row.updated_at),
@@ -132,8 +132,14 @@ class SqliteDocumentStore(DocumentStore):
         doc_row, entity_row = row
         return self._document_to_domain(doc_row, entity_row)
 
-    async def list_documents(self, user_id: UserId) -> list[Document]:
-        result = await self.db.execute(
+    async def list_documents(
+        self,
+        user_id: UserId,
+        source: Optional[DocumentSource] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Document]:
+        query = (
             select(DocumentModel, EntityModel)
             .join(EntityModel, DocumentModel.id == EntityModel.id)
             .where(
@@ -142,6 +148,10 @@ class SqliteDocumentStore(DocumentStore):
             )
             .order_by(EntityModel.updated_at.desc())
         )
+        if source is not None:
+            query = query.where(DocumentModel.source == source.value)
+        query = query.limit(limit).offset(offset)
+        result = await self.db.execute(query)
         return [self._document_to_domain(d, e) for d, e in result]
 
     async def search_documents(
@@ -194,7 +204,7 @@ class SqliteDocumentStore(DocumentStore):
         icon: Optional[str] = None,
         content_markdown: Optional[str] = None,
         referenced_assets: Optional[list[AssetId]] = None,
-        source_tab_id: Optional[TabId] = None,
+        source_tab_id: Optional[str] = None,
     ) -> Tab:
         row = TabModel(
             id=new_uuid(),
@@ -205,7 +215,7 @@ class SqliteDocumentStore(DocumentStore):
             icon=icon,
             content_markdown=content_markdown,
             referenced_assets=[str(a) for a in (referenced_assets or [])],
-            source_tab_id=str(source_tab_id) if source_tab_id else None,
+            source_tab_id=source_tab_id,
         )
         self.db.add(row)
         await self.db.flush()
@@ -226,6 +236,58 @@ class SqliteDocumentStore(DocumentStore):
         )
         return [self._tab_to_domain(row) for row in result.scalars()]
 
+    async def get_tab_by_source_id(
+        self,
+        document_id: DocumentId,
+        source_tab_id: str,
+    ) -> Optional[Tab]:
+        result = await self.db.execute(
+            select(TabModel).where(
+                TabModel.document_id == str(document_id),
+                TabModel.source_tab_id == source_tab_id,
+            )
+        )
+        row = result.scalar_one_or_none()
+        return self._tab_to_domain(row) if row else None
+
+    async def get_child_tabs(self, parent_tab_id: TabId) -> list[Tab]:
+        result = await self.db.execute(
+            select(TabModel)
+            .where(TabModel.parent_tab_id == str(parent_tab_id))
+            .order_by(TabModel.tab_index)
+        )
+        return [self._tab_to_domain(row) for row in result.scalars()]
+
+    async def update_tab(
+        self,
+        tab_id: TabId,
+        title: Optional[str] = None,
+        icon: Optional[str] = None,
+        content_markdown: Optional[str] = None,
+        referenced_assets: Optional[list[AssetId]] = None,
+        tab_index: Optional[int] = None,
+        parent_tab_id: Optional[TabId] = None,
+    ) -> Tab:
+        result = await self.db.execute(
+            select(TabModel).where(TabModel.id == str(tab_id))
+        )
+        row = result.scalar_one()
+        if title is not None:
+            row.title = title
+        if icon is not None:
+            row.icon = icon
+        if content_markdown is not None:
+            row.content_markdown = content_markdown
+        if referenced_assets is not None:
+            row.referenced_assets = [str(a) for a in referenced_assets]
+        if tab_index is not None:
+            row.tab_index = tab_index
+        if parent_tab_id is not None:
+            row.parent_tab_id = str(parent_tab_id)
+        row.updated_at = now_epoch_ms()
+        await self.db.flush()
+        return self._tab_to_domain(row)
+
     async def update_tab_content(
         self,
         tab_id: TabId,
@@ -241,6 +303,13 @@ class SqliteDocumentStore(DocumentStore):
             row.referenced_assets = [str(a) for a in referenced_assets]
         row.updated_at = now_epoch_ms()
         await self.db.flush()
+
+    async def delete_tabs(self, document_id: DocumentId) -> int:
+        result = await self.db.execute(
+            delete(TabModel).where(TabModel.document_id == str(document_id))
+        )
+        await self.db.flush()
+        return result.rowcount
 
     async def set_tab_revision(
         self,

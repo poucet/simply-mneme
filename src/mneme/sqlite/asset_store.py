@@ -1,35 +1,28 @@
 """SQLite implementation of AssetStore."""
 
-import hashlib
-from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..content.blob_storage import BlobStorage
 from ..content.protocol import AssetStore
 from ..content.stored import AssetRef
 from ..ids import AssetId, EntityId
 from ..types import EntityType
-from .models import AssetModel, EntityModel, epoch_ms_to_datetime, new_uuid
+from .models import AssetModel, EntityModel, epoch_ms_to_datetime
 
 
 class SqliteAssetStore(AssetStore):
     """SQLite-backed AssetStore implementation.
 
-    Stores asset metadata in the database and binary data on the filesystem
-    using content-addressable sharded paths (first 2 chars of SHA-256 hash).
+    Stores asset metadata in the database and delegates binary data
+    to a content-addressable BlobStorage.
     """
 
-    def __init__(self, db: AsyncSession, storage_root: Path) -> None:
+    def __init__(self, db: AsyncSession, blob_storage: BlobStorage) -> None:
         self.db = db
-        self.storage_root = storage_root
-        self.storage_root.mkdir(parents=True, exist_ok=True)
-
-    def _blob_path(self, content_hash: str) -> Path:
-        """Get the sharded filesystem path for a content hash."""
-        shard = content_hash[:2]
-        return self.storage_root / shard / content_hash
+        self.blob_storage = blob_storage
 
     async def store_asset(
         self,
@@ -38,13 +31,8 @@ class SqliteAssetStore(AssetStore):
         mime_type: str,
         original_filename: Optional[str] = None,
     ) -> AssetRef:
-        content_hash = hashlib.sha256(data).hexdigest()
-
-        # Write blob to filesystem (deduplicated by hash)
-        blob_path = self._blob_path(content_hash)
-        blob_path.parent.mkdir(parents=True, exist_ok=True)
-        if not blob_path.exists():
-            blob_path.write_bytes(data)
+        # Store blob (deduplicates by content hash)
+        content_hash, relative_path = await self.blob_storage.store(data, mime_type)
 
         # Create entity for the asset
         entity_row = EntityModel(
@@ -62,7 +50,7 @@ class SqliteAssetStore(AssetStore):
             content_hash=content_hash,
             file_size=len(data),
             original_filename=original_filename,
-            storage_path=str(blob_path),
+            storage_path=relative_path,
         )
         self.db.add(asset_row)
         await self.db.flush()
@@ -77,10 +65,7 @@ class SqliteAssetStore(AssetStore):
         if row is None:
             return None
 
-        blob_path = Path(row.storage_path)
-        if not blob_path.exists():
-            return None
-        return blob_path.read_bytes()
+        return await self.blob_storage.retrieve(row.storage_path)
 
     async def get_asset_metadata(self, asset_id: AssetId) -> Optional[dict]:
         result = await self.db.execute(

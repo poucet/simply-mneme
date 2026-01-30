@@ -8,7 +8,7 @@ from .stored import (
     ToolResult,
     ContentBlock,
 )
-from .protocol import ContentStore, AssetStore
+from .protocol import BlobStore, ContentStore, AssetStore
 
 __all__ = [
     "StoredContent",
@@ -19,6 +19,7 @@ __all__ = [
     "ToolCall",
     "ToolResult",
     "ContentBlock",
+    "BlobStore",
     "ContentStore",
     "AssetStore",
     # nous_bridge available via mneme.content.nous_bridge when simply-nous is installed

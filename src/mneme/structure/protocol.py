@@ -163,7 +163,13 @@ class DocumentStore(ABC):
     ) -> Optional[Document]: ...
 
     @abstractmethod
-    async def list_documents(self, user_id: UserId) -> list[Document]: ...
+    async def list_documents(
+        self,
+        user_id: UserId,
+        source: Optional[DocumentSource] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Document]: ...
 
     @abstractmethod
     async def search_documents(
@@ -195,7 +201,7 @@ class DocumentStore(ABC):
         icon: Optional[str] = None,
         content_markdown: Optional[str] = None,
         referenced_assets: Optional[list[AssetId]] = None,
-        source_tab_id: Optional[TabId] = None,
+        source_tab_id: Optional[str] = None,
     ) -> Tab: ...
 
     @abstractmethod
@@ -205,12 +211,31 @@ class DocumentStore(ABC):
     async def list_tabs(self, document_id: DocumentId) -> list[Tab]: ...
 
     @abstractmethod
-    async def update_tab_content(
+    async def get_tab_by_source_id(
+        self,
+        document_id: DocumentId,
+        source_tab_id: str,
+    ) -> Optional[Tab]: ...
+
+    @abstractmethod
+    async def get_child_tabs(self, parent_tab_id: TabId) -> list[Tab]: ...
+
+    @abstractmethod
+    async def update_tab(
         self,
         tab_id: TabId,
-        content_markdown: str,
+        title: Optional[str] = None,
+        icon: Optional[str] = None,
+        content_markdown: Optional[str] = None,
         referenced_assets: Optional[list[AssetId]] = None,
-    ) -> None: ...
+        tab_index: Optional[int] = None,
+        parent_tab_id: Optional[TabId] = None,
+    ) -> Tab: ...
+
+    @abstractmethod
+    async def delete_tabs(self, document_id: DocumentId) -> int:
+        """Delete all tabs for a document. Returns count of deleted tabs."""
+        ...
 
     @abstractmethod
     async def set_tab_revision(
@@ -260,6 +285,11 @@ class UserStore(ABC):
 
     @abstractmethod
     async def create_user(self, email: str) -> User: ...
+
+    @abstractmethod
+    async def get_or_create_user(self, email: str) -> User:
+        """Get user by email or create if not found."""
+        ...
 
     @abstractmethod
     async def update_user(

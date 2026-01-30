@@ -1,4 +1,4 @@
-"""Content layer abstract stores - ContentStore, AssetStore."""
+"""Content layer abstract stores - BlobStore, ContentStore, AssetStore."""
 
 from abc import ABC, abstractmethod
 from typing import Optional
@@ -6,6 +6,42 @@ from typing import Optional
 from ..ids import AssetId, ContentBlockId, EntityId
 from ..types import ContentOrigin
 from .stored import AssetRef, ContentBlock, StoredContent
+
+
+class BlobStore(ABC):
+    """Abstract content-addressable blob storage.
+
+    Handles raw binary data with SHA-256 deduplication.
+    Implementations may use the local filesystem, S3, GCS, etc.
+    """
+
+    @abstractmethod
+    async def store(self, data: bytes, mime_type: str) -> tuple[str, str]:
+        """Store blob data, returning (content_hash, relative_path).
+
+        Deduplicates: identical content produces the same hash and is stored once.
+        """
+        ...
+
+    @abstractmethod
+    async def retrieve(self, relative_path: str) -> Optional[bytes]:
+        """Retrieve blob data by relative path. Returns None if missing."""
+        ...
+
+    @abstractmethod
+    async def retrieve_by_hash(self, content_hash: str, mime_type: str) -> Optional[bytes]:
+        """Retrieve blob data by content hash."""
+        ...
+
+    @abstractmethod
+    async def exists(self, content_hash: str, mime_type: str) -> bool:
+        """Check if a blob exists in storage."""
+        ...
+
+    @abstractmethod
+    async def delete(self, relative_path: str) -> bool:
+        """Delete a blob. Returns True if deleted."""
+        ...
 
 
 class ContentStore(ABC):

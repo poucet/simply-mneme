@@ -48,6 +48,12 @@ class SqliteUserStore(UserStore):
         await self.db.flush()
         return self._to_domain(row)
 
+    async def get_or_create_user(self, email: str) -> User:
+        existing = await self.get_user_by_email(email)
+        if existing is not None:
+            return existing
+        return await self.create_user(email)
+
     async def update_user(
         self,
         user_id: UserId,

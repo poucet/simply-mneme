@@ -46,6 +46,7 @@ from .structure import (
 from .content import (
     AssetRef,
     AssetStore,
+    BlobStore,
     ContentBlock,
     ContentStore,
     DocumentRef,
@@ -98,6 +99,7 @@ __all__ = [
     "ToolResult",
     "ContentBlock",
     # Stores
+    "BlobStore",
     "ConversationStore",
     "DocumentStore",
     "UserStore",

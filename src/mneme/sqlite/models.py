@@ -206,7 +206,7 @@ class TabModel(Base):
     icon = Column(Text, nullable=True)
     content_markdown = Column(Text, nullable=True)
     referenced_assets = Column(JSON, nullable=False, default=list)  # list[AssetId as str]
-    source_tab_id = Column(Text, ForeignKey("tabs.id", ondelete="SET NULL"), nullable=True)
+    source_tab_id = Column(Text, nullable=True)  # External source tab ID (e.g. Google Docs)
     current_revision_id = Column(Text, nullable=True)  # Set after revision created
     created_at = Column(BigInteger, nullable=False, default=now_epoch_ms)
     updated_at = Column(BigInteger, nullable=False, default=now_epoch_ms, onupdate=now_epoch_ms)

@@ -16,6 +16,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..content.blob_storage import BlobStorage
 from .asset_store import SqliteAssetStore
 from .content_store import SqliteContentStore
 from .conversation_store import SqliteConversationStore
@@ -52,13 +53,14 @@ def create_stores(db: AsyncSession, storage_root: Path) -> SqliteStores:
         db: Async SQLAlchemy session (manages transaction lifecycle).
         storage_root: Root directory for binary asset storage.
     """
+    blob_storage = BlobStorage(storage_root)
     return SqliteStores(
         entities=SqliteEntityStore(db),
         conversations=SqliteConversationStore(db),
         documents=SqliteDocumentStore(db),
         users=SqliteUserStore(db),
         content=SqliteContentStore(db),
-        assets=SqliteAssetStore(db, storage_root),
+        assets=SqliteAssetStore(db, blob_storage),
     )
 
 
