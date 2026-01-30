@@ -20,7 +20,7 @@ from nous.types.content import (
     ToolUseContent as NousToolUseContent,
 )
 
-from ..ids import AssetId, EntityId
+from ..ids import EntityId
 from ..types import ContentOrigin
 from .protocol import AssetStore, ContentStore
 from .stored import (
@@ -86,9 +86,6 @@ async def nous_to_stored(
 # Internal: resolve one ref → one nous block
 # ---------------------------------------------------------------------------
 
-_ZERO_ENTITY = EntityId("00000000-0000-0000-0000-000000000000")
-
-
 async def _resolve_one(
     ref: StoredContent,
     content_store: ContentStore,
@@ -149,11 +146,11 @@ async def _store_one(
             cid = await content_store.store_text(text, origin, model_id=model_id)
             return TextRef(content_block_id=cid)
 
-        case NousImageContent(mime_type=mt, data=data, attachment_id=aid):
-            return await _store_asset(mt, data, aid, asset_store)
+        case NousImageContent(mime_type=mt, data=data):
+            return await _store_asset(mt, data, asset_store)
 
-        case NousAudioContent(mime_type=mt, data=data, attachment_id=aid):
-            return await _store_asset(mt, data, aid, asset_store)
+        case NousAudioContent(mime_type=mt, data=data):
+            return await _store_asset(mt, data, asset_store)
 
         case NousToolUseContent(id=tid, name=name, input=inp):
             return ToolCall(id=tid, name=name, input=inp)
@@ -177,18 +174,14 @@ async def _store_one(
 async def _store_asset(
     mime_type: str,
     data: str | None,
-    attachment_id: str | None,
     asset_store: AssetStore,
 ) -> AssetRef | None:
-    if data:
-        binary = base64.b64decode(data)
-        entity_id = EntityId(attachment_id) if attachment_id else _ZERO_ENTITY
-        new_aid = await asset_store.store_asset(
-            entity_id=entity_id,
-            data=binary,
-            mime_type=mime_type,
-        )
-        return AssetRef(asset_id=new_aid, mime_type=mime_type)
-    if attachment_id:
-        return AssetRef(asset_id=AssetId(attachment_id), mime_type=mime_type)
-    return None
+    if not data:
+        return None
+    binary = base64.b64decode(data)
+    new_aid = await asset_store.store_asset(
+        entity_id=EntityId.generate(),
+        data=binary,
+        mime_type=mime_type,
+    )
+    return AssetRef(asset_id=new_aid, mime_type=mime_type)
