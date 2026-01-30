@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..structure.protocol import ConversationStore
@@ -111,6 +111,32 @@ class SqliteConversationStore(ConversationStore):
 
         return self._conversation_to_domain(conv_row, entity_row)
 
+    async def list_conversations(
+        self,
+        user_id: UserId,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> list[Conversation]:
+        stmt = (
+            select(ConversationModel, EntityModel)
+            .join(EntityModel, ConversationModel.id == EntityModel.id)
+            .where(
+                EntityModel.user_id == str(user_id),
+                EntityModel.is_archived == False,
+            )
+            .order_by(EntityModel.updated_at.desc())
+        )
+        if offset:
+            stmt = stmt.offset(offset)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+
+        result = await self.db.execute(stmt)
+        return [
+            self._conversation_to_domain(conv_row, entity_row)
+            for conv_row, entity_row in result.all()
+        ]
+
     async def get_conversation(self, conversation_id: ConversationId) -> Optional[Conversation]:
         result = await self.db.execute(
             select(ConversationModel, EntityModel)
@@ -147,6 +173,21 @@ class SqliteConversationStore(ConversationStore):
         entity_row.updated_at = now_epoch_ms()
         await self.db.flush()
         return self._conversation_to_domain(conv_row, entity_row)
+
+    async def delete_conversation(self, conversation_id: ConversationId) -> bool:
+        # Delete selections, then conversation, then entity (cascade handles related rows)
+        await self.db.execute(
+            delete(ConversationSelectionModel)
+            .where(ConversationSelectionModel.conversation_id == str(conversation_id))
+        )
+        await self.db.execute(
+            delete(ConversationModel).where(ConversationModel.id == str(conversation_id))
+        )
+        await self.db.execute(
+            delete(EntityModel).where(EntityModel.id == str(conversation_id))
+        )
+        await self.db.flush()
+        return True
 
     # -- Turn / Span / Message --
 

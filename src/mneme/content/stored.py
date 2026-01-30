@@ -43,12 +43,16 @@ class ToolCall:
     input: dict[str, Any]
 
 
+# Content types that can appear inside tool results (no recursion).
+ToolContent = Union[TextRef, AssetRef]
+
+
 @dataclass(frozen=True)
 class ToolResult:
     """Result of a tool/function call."""
 
     tool_use_id: str
-    content: str
+    content: tuple[ToolContent, ...] = ()
     is_error: bool = False
 
 

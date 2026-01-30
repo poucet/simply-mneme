@@ -38,6 +38,14 @@ class ConversationStore(ABC):
     async def get_conversation(self, conversation_id: ConversationId) -> Optional[Conversation]: ...
 
     @abstractmethod
+    async def list_conversations(
+        self,
+        user_id: UserId,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> list[Conversation]: ...
+
+    @abstractmethod
     async def update_conversation(
         self,
         conversation_id: ConversationId,
@@ -45,6 +53,9 @@ class ConversationStore(ABC):
         last_model: Optional[str] = None,
         summary_text: Optional[str] = None,
     ) -> Conversation: ...
+
+    @abstractmethod
+    async def delete_conversation(self, conversation_id: ConversationId) -> bool: ...
 
     # -- Turn / Span / Message --
 

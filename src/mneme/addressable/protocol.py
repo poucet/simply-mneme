@@ -35,6 +35,8 @@ class EntityStore(ABC):
         self,
         user_id: UserId,
         entity_type: Optional[EntityType] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
     ) -> list[Entity]: ...
 
     @abstractmethod

@@ -1,5 +1,6 @@
 from .stored import (
     StoredContent,
+    ToolContent,
     TextRef,
     AssetRef,
     DocumentRef,
@@ -11,6 +12,7 @@ from .protocol import ContentStore, AssetStore
 
 __all__ = [
     "StoredContent",
+    "ToolContent",
     "TextRef",
     "AssetRef",
     "DocumentRef",

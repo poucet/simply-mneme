@@ -94,6 +94,8 @@ class SqliteEntityStore(EntityStore):
         self,
         user_id: UserId,
         entity_type: Optional[EntityType] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
     ) -> list[Entity]:
         stmt = select(EntityModel).where(
             EntityModel.user_id == str(user_id),
@@ -102,6 +104,10 @@ class SqliteEntityStore(EntityStore):
         if entity_type is not None:
             stmt = stmt.where(EntityModel.type == entity_type.value)
         stmt = stmt.order_by(EntityModel.updated_at.desc())
+        if offset:
+            stmt = stmt.offset(offset)
+        if limit is not None:
+            stmt = stmt.limit(limit)
 
         result = await self.db.execute(stmt)
         return [self._to_domain(row) for row in result.scalars()]
