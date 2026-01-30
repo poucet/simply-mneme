@@ -8,6 +8,12 @@ dependencies = [
     "aiosqlite>=0.20",
 ]
 
+[project.optional-dependencies]
+nous = ["simply-nous"]
+
+[tool.uv.sources]
+simply-nous = { path = "../../nous", editable = true }
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

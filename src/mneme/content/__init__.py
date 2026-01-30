@@ -21,4 +21,5 @@ __all__ = [
     "ContentBlock",
     "ContentStore",
     "AssetStore",
+    # nous_bridge available via mneme.content.nous_bridge when simply-nous is installed
 ]
