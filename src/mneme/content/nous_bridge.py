@@ -146,11 +146,14 @@ async def _store_one(
             cid = await content_store.store_text(text, origin, model_id=model_id)
             return TextRef(content_block_id=cid)
 
-        case NousImageContent(mime_type=mt, data=data):
-            return await _store_asset(mt, data, asset_store)
-
-        case NousAudioContent(mime_type=mt, data=data):
-            return await _store_asset(mt, data, asset_store)
+        case NousImageContent(mime_type=mt, data=data) | NousAudioContent(mime_type=mt, data=data):
+            if not data:
+                return None
+            return await asset_store.store_asset(
+                entity_id=EntityId.generate(),
+                data=base64.b64decode(data),
+                mime_type=mt,
+            )
 
         case NousToolUseContent(id=tid, name=name, input=inp):
             return ToolCall(id=tid, name=name, input=inp)
@@ -169,19 +172,3 @@ async def _store_one(
 
         case _:
             return None
-
-
-async def _store_asset(
-    mime_type: str,
-    data: str | None,
-    asset_store: AssetStore,
-) -> AssetRef | None:
-    if not data:
-        return None
-    binary = base64.b64decode(data)
-    new_aid = await asset_store.store_asset(
-        entity_id=EntityId.generate(),
-        data=binary,
-        mime_type=mime_type,
-    )
-    return AssetRef(asset_id=new_aid, mime_type=mime_type)

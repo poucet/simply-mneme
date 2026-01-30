@@ -70,10 +70,10 @@ class FakeAssetStore(AssetStore):
         data: bytes,
         mime_type: str,
         original_filename: Optional[str] = None,
-    ) -> AssetId:
+    ) -> AssetRef:
         aid = AssetId.generate()
         self._assets[aid] = (data, mime_type)
-        return aid
+        return AssetRef(asset_id=aid, mime_type=mime_type)
 
     async def get_asset_data(self, asset_id: AssetId) -> Optional[bytes]:
         entry = self._assets.get(asset_id)
@@ -127,8 +127,8 @@ class TestStoredToNous:
 
     async def test_image_asset_ref_resolves_to_image_content(self, content_store, asset_store):
         raw = b"\x89PNG\r\n\x1a\nfake-png-data"
-        aid = await asset_store.store_asset(EntityId.generate(), raw, "image/png")
-        refs: list[StoredContent] = [AssetRef(asset_id=aid, mime_type="image/png")]
+        ref = await asset_store.store_asset(EntityId.generate(), raw, "image/png")
+        refs: list[StoredContent] = [ref]
 
         blocks = await stored_to_nous(refs, content_store, asset_store)
 
@@ -136,12 +136,12 @@ class TestStoredToNous:
         assert isinstance(blocks[0], NousImageContent)
         assert blocks[0].mime_type == "image/png"
         assert base64.b64decode(blocks[0].data) == raw
-        assert blocks[0].attachment_id == str(aid)
+        assert blocks[0].attachment_id == str(ref.asset_id)
 
     async def test_audio_asset_ref_resolves_to_audio_content(self, content_store, asset_store):
         raw = b"RIFF....WAVEfmt fake-audio"
-        aid = await asset_store.store_asset(EntityId.generate(), raw, "audio/wav")
-        refs: list[StoredContent] = [AssetRef(asset_id=aid, mime_type="audio/wav")]
+        ref = await asset_store.store_asset(EntityId.generate(), raw, "audio/wav")
+        refs: list[StoredContent] = [ref]
 
         blocks = await stored_to_nous(refs, content_store, asset_store)
 
@@ -219,11 +219,11 @@ class TestStoredToNous:
 
     async def test_tool_result_with_image_content(self, content_store, asset_store):
         raw = b"screenshot-bytes"
-        aid = await asset_store.store_asset(EntityId.generate(), raw, "image/png")
+        ref = await asset_store.store_asset(EntityId.generate(), raw, "image/png")
         refs: list[StoredContent] = [
             ToolResult(
                 tool_use_id="call_789",
-                content=(AssetRef(asset_id=aid, mime_type="image/png"),),
+                content=(ref,),
             )
         ]
 
@@ -250,11 +250,11 @@ class TestStoredToNous:
     async def test_multiple_refs_mixed(self, content_store, asset_store):
         cid = await content_store.store_text("some text", ContentOrigin.ASSISTANT)
         raw = b"image-data"
-        aid = await asset_store.store_asset(EntityId.generate(), raw, "image/jpeg")
+        img_ref = await asset_store.store_asset(EntityId.generate(), raw, "image/jpeg")
 
         refs: list[StoredContent] = [
             TextRef(content_block_id=cid),
-            AssetRef(asset_id=aid, mime_type="image/jpeg"),
+            img_ref,
             ToolCall(id="c1", name="tool", input={}),
         ]
 
@@ -517,8 +517,8 @@ class TestRoundTrip:
 
     async def test_image_round_trip(self, content_store, asset_store):
         raw = b"\x89PNG\r\n\x1a\nreal-image-data-here"
-        aid = await asset_store.store_asset(EntityId.generate(), raw, "image/png")
-        original = [AssetRef(asset_id=aid, mime_type="image/png")]
+        ref = await asset_store.store_asset(EntityId.generate(), raw, "image/png")
+        original = [ref]
 
         # mneme → nous
         nous_blocks = await stored_to_nous(original, content_store, asset_store)
@@ -538,8 +538,8 @@ class TestRoundTrip:
 
     async def test_audio_round_trip(self, content_store, asset_store):
         raw = b"RIFF\x00\x00\x00\x00WAVEfmt "
-        aid = await asset_store.store_asset(EntityId.generate(), raw, "audio/wav")
-        original = [AssetRef(asset_id=aid, mime_type="audio/wav")]
+        ref = await asset_store.store_asset(EntityId.generate(), raw, "audio/wav")
+        original = [ref]
 
         nous_blocks = await stored_to_nous(original, content_store, asset_store)
         assert isinstance(nous_blocks[0], NousAudioContent)
@@ -602,7 +602,7 @@ class TestRoundTrip:
             "Found 3 results", ContentOrigin.SYSTEM
         )
         img_data = b"chart-png-bytes"
-        img_aid = await asset_store.store_asset(
+        img_ref = await asset_store.store_asset(
             EntityId.generate(), img_data, "image/png"
         )
 
@@ -613,7 +613,7 @@ class TestRoundTrip:
                 tool_use_id="c1",
                 content=(
                     TextRef(content_block_id=result_cid),
-                    AssetRef(asset_id=img_aid, mime_type="image/png"),
+                    img_ref,
                 ),
                 is_error=False,
             ),

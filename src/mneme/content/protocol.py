@@ -5,7 +5,7 @@ from typing import Optional
 
 from ..ids import AssetId, ContentBlockId, EntityId
 from ..types import ContentOrigin
-from .stored import ContentBlock, StoredContent
+from .stored import AssetRef, ContentBlock, StoredContent
 
 
 class ContentStore(ABC):
@@ -45,7 +45,7 @@ class AssetStore(ABC):
         data: bytes,
         mime_type: str,
         original_filename: Optional[str] = None,
-    ) -> AssetId: ...
+    ) -> AssetRef: ...
 
     @abstractmethod
     async def get_asset_data(self, asset_id: AssetId) -> Optional[bytes]: ...

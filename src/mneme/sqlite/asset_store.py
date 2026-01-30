@@ -8,6 +8,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..content.protocol import AssetStore
+from ..content.stored import AssetRef
 from ..ids import AssetId, EntityId
 from ..types import EntityType
 from .models import AssetModel, EntityModel, epoch_ms_to_datetime, new_uuid
@@ -36,7 +37,7 @@ class SqliteAssetStore(AssetStore):
         data: bytes,
         mime_type: str,
         original_filename: Optional[str] = None,
-    ) -> AssetId:
+    ) -> AssetRef:
         content_hash = hashlib.sha256(data).hexdigest()
 
         # Write blob to filesystem (deduplicated by hash)
@@ -66,7 +67,7 @@ class SqliteAssetStore(AssetStore):
         self.db.add(asset_row)
         await self.db.flush()
 
-        return AssetId(str(entity_id))
+        return AssetRef(asset_id=AssetId(str(entity_id)), mime_type=mime_type)
 
     async def get_asset_data(self, asset_id: AssetId) -> Optional[bytes]:
         result = await self.db.execute(
