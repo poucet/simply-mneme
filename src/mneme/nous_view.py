@@ -17,7 +17,7 @@ Requires the 'nous' optional dependency: pip install simply-mneme[nous]
 
 import base64
 import logging
-from typing import Optional, TYPE_CHECKING
+from typing import Optional
 
 from nous.types import Message as NousMessage
 from nous.types.content import (
