@@ -9,6 +9,7 @@ from .stored import (
     ContentBlock,
 )
 from .protocol import BlobStore, ContentStore, AssetStore
+from .media import store_media_from_result
 
 __all__ = [
     "StoredContent",
@@ -22,5 +23,6 @@ __all__ = [
     "BlobStore",
     "ContentStore",
     "AssetStore",
+    "store_media_from_result",
     # nous_bridge available via mneme.content.nous_bridge when simply-nous is installed
 ]

@@ -51,7 +51,7 @@ ToolContent = Union[TextRef, AssetRef]
 class ToolResult:
     """Result of a tool/function call."""
 
-    tool_use_id: str
+    tool_call_id: str
     content: tuple[ToolContent, ...] = ()
     is_error: bool = False
 

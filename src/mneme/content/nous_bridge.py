@@ -114,14 +114,14 @@ async def _resolve_one(
         case ToolCall(id=tid, name=name, input=inp):
             return NousToolUseContent(id=tid, name=name, input=inp)
 
-        case ToolResult(tool_use_id=tuid, content=content, is_error=err):
+        case ToolResult(tool_call_id=tuid, content=content, is_error=err):
             nested: list[NousToolContent] = []
             for item in content:
                 resolved = await _resolve_one(item, content_store, asset_store)
                 if resolved is not None:
                     nested.append(resolved)
             return NousToolResultContent(
-                tool_use_id=tuid,
+                tool_call_id=tuid,
                 content=nested,
                 is_error=err,
             )
@@ -158,14 +158,14 @@ async def _store_one(
         case NousToolUseContent(id=tid, name=name, input=inp):
             return ToolCall(id=tid, name=name, input=inp)
 
-        case NousToolResultContent(tool_use_id=tuid, content=content, is_error=err):
+        case NousToolResultContent(tool_call_id=tuid, content=content, is_error=err):
             nested: list[ToolContent] = []
             for item in content:
                 stored = await _store_one(item, content_store, asset_store, origin, model_id)
                 if stored is not None and isinstance(stored, (TextRef, AssetRef)):
                     nested.append(stored)
             return ToolResult(
-                tool_use_id=tuid,
+                tool_call_id=tuid,
                 content=tuple(nested),
                 is_error=err,
             )

@@ -57,6 +57,7 @@ from .content import (
     TextRef,
     ToolCall,
     ToolResult,
+    store_media_from_result,
 )
 
 __all__ = [
@@ -103,6 +104,7 @@ __all__ = [
     "ToolCall",
     "ToolResult",
     "ContentBlock",
+    "store_media_from_result",
     # Stores
     "BlobStore",
     "ConversationStore",

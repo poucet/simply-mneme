@@ -38,10 +38,10 @@ def _serialize_item(item: StoredContent) -> dict[str, Any]:
             return {"type": "document_ref", "document_id": str(did)}
         case ToolCall(id=tid, name=name, input=inp):
             return {"type": "tool_call", "id": tid, "name": name, "input": inp}
-        case ToolResult(tool_use_id=tuid, content=content, is_error=err):
+        case ToolResult(tool_call_id=tuid, content=content, is_error=err):
             return {
                 "type": "tool_result",
-                "tool_use_id": tuid,
+                "tool_call_id": tuid,
                 "content": [_serialize_tool_content(c) for c in content],
                 "is_error": err,
             }
@@ -75,7 +75,7 @@ _DESERIALIZERS = {
     "document_ref": lambda d: DocumentRef(document_id=DocumentId(d["document_id"])),
     "tool_call": lambda d: ToolCall(id=d["id"], name=d["name"], input=d["input"]),
     "tool_result": lambda d: ToolResult(
-        tool_use_id=d["tool_use_id"],
+        tool_call_id=d.get("tool_call_id") or d.get("tool_use_id", ""),
         content=tuple(_deserialize_tool_content(c) for c in d.get("content", [])),
         is_error=d.get("is_error", False),
     ),

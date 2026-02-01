@@ -183,7 +183,7 @@ class TestStoredToNous:
         cid = await content_store.store_text("result text", ContentOrigin.ASSISTANT)
         refs: list[StoredContent] = [
             ToolResult(
-                tool_use_id="call_123",
+                tool_call_id="call_123",
                 content=(TextRef(content_block_id=cid),),
                 is_error=False,
             )
@@ -194,7 +194,7 @@ class TestStoredToNous:
         assert len(blocks) == 1
         result = blocks[0]
         assert isinstance(result, NousToolResultContent)
-        assert result.tool_use_id == "call_123"
+        assert result.tool_call_id == "call_123"
         assert result.is_error is False
         assert len(result.content) == 1
         assert isinstance(result.content[0], NousTextContent)
@@ -204,7 +204,7 @@ class TestStoredToNous:
         cid = await content_store.store_text("error msg", ContentOrigin.SYSTEM)
         refs: list[StoredContent] = [
             ToolResult(
-                tool_use_id="call_456",
+                tool_call_id="call_456",
                 content=(TextRef(content_block_id=cid),),
                 is_error=True,
             )
@@ -222,7 +222,7 @@ class TestStoredToNous:
         ref = await asset_store.store_asset(EntityId.generate(), raw, "image/png")
         refs: list[StoredContent] = [
             ToolResult(
-                tool_use_id="call_789",
+                tool_call_id="call_789",
                 content=(ref,),
             )
         ]
@@ -237,7 +237,7 @@ class TestStoredToNous:
 
     async def test_tool_result_empty_content(self, content_store, asset_store):
         refs: list[StoredContent] = [
-            ToolResult(tool_use_id="call_empty", content=(), is_error=False)
+            ToolResult(tool_call_id="call_empty", content=(), is_error=False)
         ]
 
         blocks = await stored_to_nous(refs, content_store, asset_store)
@@ -370,7 +370,7 @@ class TestNousToStored:
     async def test_tool_result_with_text(self, content_store, asset_store):
         blocks = [
             NousToolResultContent(
-                tool_use_id="toolu_abc",
+                tool_call_id="toolu_abc",
                 content=[NousTextContent(text="sunny, 72°F")],
                 is_error=False,
             )
@@ -382,7 +382,7 @@ class TestNousToStored:
 
         assert len(refs) == 1
         assert isinstance(refs[0], ToolResult)
-        assert refs[0].tool_use_id == "toolu_abc"
+        assert refs[0].tool_call_id == "toolu_abc"
         assert refs[0].is_error is False
         assert len(refs[0].content) == 1
         assert isinstance(refs[0].content[0], TextRef)
@@ -395,7 +395,7 @@ class TestNousToStored:
         b64 = base64.b64encode(raw).decode()
         blocks = [
             NousToolResultContent(
-                tool_use_id="toolu_def",
+                tool_call_id="toolu_def",
                 content=[NousImageContent(mime_type="image/png", data=b64)],
             )
         ]
@@ -414,7 +414,7 @@ class TestNousToStored:
     async def test_tool_result_with_error(self, content_store, asset_store):
         blocks = [
             NousToolResultContent(
-                tool_use_id="toolu_err",
+                tool_call_id="toolu_err",
                 content=[NousTextContent(text="command failed")],
                 is_error=True,
             )
@@ -431,7 +431,7 @@ class TestNousToStored:
     async def test_tool_result_empty_content(self, content_store, asset_store):
         blocks = [
             NousToolResultContent(
-                tool_use_id="toolu_empty",
+                tool_call_id="toolu_empty",
                 content=[],
                 is_error=False,
             )
@@ -570,7 +570,7 @@ class TestRoundTrip:
         cid = await content_store.store_text("result data", ContentOrigin.SYSTEM)
         original = [
             ToolResult(
-                tool_use_id="c1",
+                tool_call_id="c1",
                 content=(TextRef(content_block_id=cid),),
                 is_error=False,
             )
@@ -586,7 +586,7 @@ class TestRoundTrip:
         assert len(stored) == 1
         tr = stored[0]
         assert isinstance(tr, ToolResult)
-        assert tr.tool_use_id == "c1"
+        assert tr.tool_call_id == "c1"
         assert tr.is_error is False
         assert len(tr.content) == 1
         text = await content_store.get_text(tr.content[0].content_block_id)
@@ -610,7 +610,7 @@ class TestRoundTrip:
             TextRef(content_block_id=text_cid),
             ToolCall(id="c1", name="search", input={"q": "test"}),
             ToolResult(
-                tool_use_id="c1",
+                tool_call_id="c1",
                 content=(
                     TextRef(content_block_id=result_cid),
                     img_ref,

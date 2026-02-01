@@ -5,18 +5,18 @@ Handles get_messages() and add_message() via Turn/Span/Message storage
 with nous↔mneme content conversion via the content bridge.
 
 History is loaded once on first get_messages() call and cached in memory.
-Subsequent add_message() calls append to the cache, so the DB is only
-read once per view lifetime.
+Messages added via add_message() are buffered in memory and only persisted
+when on_turn_complete() is called — this is the "commit point" for storage.
 
-Streaming callbacks (on_text_delta, on_content_block, call_tool) are no-ops
-here — consumers like Episteme subclass and override them to add WebSocket
-streaming, tool execution, etc.
+Streaming callbacks (on_text_delta, on_content_block) are no-ops here —
+consumers like Episteme compose and override them to add WebSocket streaming.
+call_tool executes via nous ToolExecutor (if provided) and stores media assets.
 
 Requires the 'nous' optional dependency: pip install simply-mneme[nous]
 """
 
 import logging
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from nous.types import Message as NousMessage
 from nous.types.content import (
@@ -24,12 +24,15 @@ from nous.types.content import (
     TextContent as NousTextContent,
 )
 from nous.types.tool import ToolCall, ToolResult
+from nous.mcp import ToolExecutor
 
+from .content.media import store_media_from_result
 from .content.nous_bridge import nous_to_stored, stored_to_nous
 from .content.protocol import AssetStore, ContentStore
 from .structure.conversation import Conversation
 from .structure.protocol import ConversationStore
 from .types import ContentOrigin, Role
+
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +43,12 @@ class MnemeConversationView:
     Reads and writes conversation history via mneme stores.
     History is cached after the first load — add_message() appends to cache.
 
-    Subclass and override on_text_delta/on_content_block/call_tool/on_turn_complete
-    to add streaming, tool execution, or other side effects.
+    Messages are buffered in memory until on_turn_complete() is called,
+    which persists all pending messages to storage (the "commit point").
+
+    Tool execution is handled via an optional nous ToolExecutor. Media assets
+    from tool results are automatically stored. Override on_text_delta,
+    on_content_block for streaming and side effects.
     """
 
     def __init__(
@@ -52,6 +59,7 @@ class MnemeConversationView:
         asset_store: AssetStore,
         provider: Optional[str] = None,
         model: Optional[str] = None,
+        tool_executor: Optional[ToolExecutor] = None,
     ):
         self.conversation = conversation
         self.conversation_store = conversation_store
@@ -59,9 +67,13 @@ class MnemeConversationView:
         self.asset_store = asset_store
         self.provider = provider
         self.model = model
+        self._tool_executor = tool_executor
 
         # Cached message history (loaded once, grown by add_message)
         self._messages: Optional[list[NousMessage]] = None
+
+        # Messages buffered since last commit (persisted in on_turn_complete)
+        self._pending_messages: list[NousMessage] = []
 
         # Buffer for accumulating text during streaming
         self._text_buffer: list[str] = []
@@ -130,32 +142,51 @@ class MnemeConversationView:
         pass
 
     async def call_tool(self, tool_call: ToolCall) -> ToolResult:
-        """Execute a tool call. Override to provide tool execution."""
-        return ToolResult(
-            tool_use_id=tool_call.id,
-            content=[NousTextContent(text="Tool calling is not configured")],
-            is_error=True,
-        )
+        """Execute a tool call via nous ToolExecutor and store media assets."""
+        if not self._tool_executor:
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=[NousTextContent(text="Tool calling is not configured")],
+                is_error=True,
+            )
+
+        result = await self._tool_executor.execute(tool_call)
+        await store_media_from_result(result, tool_call.name, self.asset_store)
+        return result
 
     async def add_message(self, message: NousMessage) -> None:
-        """Persist a message by creating a Turn + Span + Message in mneme.
+        """Buffer a message for later persistence.
 
-        Each add_message() call creates a new Turn (shared across forks)
-        with a Span (this model run's version) and stores the content.
-        The message is also appended to the in-memory cache.
+        Appends to the in-memory cache immediately (so get_messages() sees it)
+        but defers storage writes to on_turn_complete().
         """
+        if self._messages is None:
+            self._messages = []
+        self._messages.append(message)
+        self._pending_messages.append(message)
+
+        # Clear text buffer after each message
+        self._text_buffer.clear()
+
+    async def on_turn_complete(self) -> None:
+        """Persist all pending messages to storage (the commit point).
+
+        Creates Turn → Span → Message for each buffered message, then
+        clears the pending buffer.
+        """
+        for message in self._pending_messages:
+            await self._persist_message(message)
+        self._pending_messages.clear()
+
+    async def _persist_message(self, message: NousMessage) -> None:
+        """Persist a single message as a Turn + Span + Message in mneme."""
         role = Role(message.role)
         model_id = message.model or self.model
 
-        # Determine content origin from role
         origin = ContentOrigin.ASSISTANT if role == Role.ASSISTANT else ContentOrigin.USER
 
-        # Create Turn → Span → select → store content → add Message
         turn = await self.conversation_store.create_turn(role)
         span = await self.conversation_store.create_span(turn.id, model_id=model_id)
-        await self.conversation_store.select_span(
-            self.conversation.id, turn.id, span.id,
-        )
 
         stored_content = await nous_to_stored(
             message.content,
@@ -167,17 +198,9 @@ class MnemeConversationView:
 
         await self.conversation_store.add_message(span.id, role, stored_content)
 
-        # Append to cache so subsequent get_messages() calls include this message
-        if self._messages is None:
-            self._messages = []
-        self._messages.append(message)
-
-        # Clear text buffer after persisting
-        self._text_buffer.clear()
-
-    async def on_turn_complete(self) -> None:
-        """Called when the entire turn is complete. Override for side effects."""
-        pass
+        await self.conversation_store.select_span(
+            self.conversation.id, turn.id, span.id,
+        )
 
     # =========================================================================
     # Helpers
