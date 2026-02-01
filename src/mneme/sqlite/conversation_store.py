@@ -19,7 +19,6 @@ from ..structure.conversation import (
     TurnWithContent,
 )
 from .models import (
-    ConversationModel,
     ConversationSelectionModel,
     EntityModel,
     EntityRelationModel,
@@ -46,12 +45,11 @@ class SqliteConversationStore(ConversationStore):
         from .entity_store import SqliteEntityStore
         return SqliteEntityStore(self.db)._to_domain(row)
 
-    def _conversation_to_domain(self, conv_row: ConversationModel, entity_row: EntityModel) -> Conversation:
+    def _conversation_to_domain(self, entity_row: EntityModel) -> Conversation:
+        meta = entity_row.metadata_ or {}
         return Conversation(
             entity=self._entity_to_domain(entity_row),
-            system_prompt=conv_row.system_prompt,
-            last_model=conv_row.last_model,
-            summary_text=conv_row.summary_text,
+            system_prompt=meta.get("system_prompt"),
         )
 
     def _turn_to_domain(self, row: TurnModel) -> Turn:
@@ -87,24 +85,22 @@ class SqliteConversationStore(ConversationStore):
         title: str,
         system_prompt: Optional[str] = None,
     ) -> Conversation:
+        metadata = {}
+        if system_prompt is not None:
+            metadata["system_prompt"] = system_prompt
+
         entity_id = new_uuid()
         entity_row = EntityModel(
             id=entity_id,
             entity_type=EntityType.CONVERSATION.value,
             user_id=str(user_id),
             name=title,
+            metadata_=metadata or None,
         )
         self.db.add(entity_row)
         await self.db.flush()
 
-        conv_row = ConversationModel(
-            id=entity_id,
-            system_prompt=system_prompt,
-        )
-        self.db.add(conv_row)
-        await self.db.flush()
-
-        return self._conversation_to_domain(conv_row, entity_row)
+        return self._conversation_to_domain(entity_row)
 
     async def list_conversations(
         self,
@@ -113,9 +109,9 @@ class SqliteConversationStore(ConversationStore):
         offset: int = 0,
     ) -> list[Conversation]:
         stmt = (
-            select(ConversationModel, EntityModel)
-            .join(EntityModel, ConversationModel.id == EntityModel.id)
+            select(EntityModel)
             .where(
+                EntityModel.entity_type == EntityType.CONVERSATION.value,
                 EntityModel.user_id == str(user_id),
                 EntityModel.is_archived == False,
             )
@@ -128,55 +124,48 @@ class SqliteConversationStore(ConversationStore):
 
         result = await self.db.execute(stmt)
         return [
-            self._conversation_to_domain(conv_row, entity_row)
-            for conv_row, entity_row in result.all()
+            self._conversation_to_domain(row)
+            for row in result.scalars()
         ]
 
     async def get_conversation(self, conversation_id: ConversationId) -> Optional[Conversation]:
         result = await self.db.execute(
-            select(ConversationModel, EntityModel)
-            .join(EntityModel, ConversationModel.id == EntityModel.id)
-            .where(ConversationModel.id == str(conversation_id))
+            select(EntityModel).where(
+                EntityModel.id == str(conversation_id),
+                EntityModel.entity_type == EntityType.CONVERSATION.value,
+            )
         )
-        row = result.one_or_none()
-        if row is None:
+        entity_row = result.scalar_one_or_none()
+        if entity_row is None:
             return None
-        conv_row, entity_row = row
-        return self._conversation_to_domain(conv_row, entity_row)
+        return self._conversation_to_domain(entity_row)
 
     async def update_conversation(
         self,
         conversation_id: ConversationId,
         system_prompt: Optional[str] = None,
-        last_model: Optional[str] = None,
-        summary_text: Optional[str] = None,
     ) -> Conversation:
         result = await self.db.execute(
-            select(ConversationModel, EntityModel)
-            .join(EntityModel, ConversationModel.id == EntityModel.id)
-            .where(ConversationModel.id == str(conversation_id))
+            select(EntityModel).where(
+                EntityModel.id == str(conversation_id),
+                EntityModel.entity_type == EntityType.CONVERSATION.value,
+            )
         )
-        conv_row, entity_row = result.one()
+        entity_row = result.scalar_one()
 
         if system_prompt is not None:
-            conv_row.system_prompt = system_prompt
-        if last_model is not None:
-            conv_row.last_model = last_model
-        if summary_text is not None:
-            conv_row.summary_text = summary_text
+            meta = dict(entity_row.metadata_ or {})
+            meta["system_prompt"] = system_prompt
+            entity_row.metadata_ = meta
 
         entity_row.updated_at = now_epoch_ms()
         await self.db.flush()
-        return self._conversation_to_domain(conv_row, entity_row)
+        return self._conversation_to_domain(entity_row)
 
     async def delete_conversation(self, conversation_id: ConversationId) -> bool:
-        # Delete selections, then conversation, then entity (cascade handles related rows)
         await self.db.execute(
             delete(ConversationSelectionModel)
             .where(ConversationSelectionModel.conversation_id == str(conversation_id))
-        )
-        await self.db.execute(
-            delete(ConversationModel).where(ConversationModel.id == str(conversation_id))
         )
         await self.db.execute(
             delete(EntityModel).where(EntityModel.id == str(conversation_id))
@@ -431,23 +420,19 @@ class SqliteConversationStore(ConversationStore):
         """Fork a conversation at a specific turn."""
         original = await self.get_conversation(conversation_id)
 
-        # Create new entity + conversation
+        metadata = {}
+        if original.system_prompt is not None:
+            metadata["system_prompt"] = original.system_prompt
+
         entity_id = new_uuid()
         entity_row = EntityModel(
             id=entity_id,
             entity_type=EntityType.CONVERSATION.value,
             user_id=str(original.entity.user_id) if original.entity.user_id else None,
             name=original.entity.name,
+            metadata_=metadata or None,
         )
         self.db.add(entity_row)
-        await self.db.flush()
-
-        conv_row = ConversationModel(
-            id=entity_id,
-            system_prompt=original.system_prompt,
-            last_model=original.last_model,
-        )
-        self.db.add(conv_row)
         await self.db.flush()
 
         # Copy selections up to the fork point
@@ -464,7 +449,7 @@ class SqliteConversationStore(ConversationStore):
         self.db.add(relation_row)
         await self.db.flush()
 
-        return self._conversation_to_domain(conv_row, entity_row)
+        return self._conversation_to_domain(entity_row)
 
     async def copy_selections(
         self,

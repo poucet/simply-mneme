@@ -2,7 +2,7 @@
 
 Tables are organized into three layers:
   Addressable: entities, entity_relations
-  Structure:   conversations, turns, spans, conversation_selections, messages,
+  Structure:   turns, spans, conversation_selections, messages,
                message_content, documents, document_tabs, document_revisions, users
   Content:     content_blocks, assets
 """
@@ -80,7 +80,6 @@ class EntityModel(Base):
     updated_at = Column(BigInteger, nullable=False, default=now_epoch_ms, onupdate=now_epoch_ms)
 
     # Relationships (back-populated by subtype tables)
-    conversation = relationship("ConversationModel", back_populates="entity", uselist=False)
     document = relationship("DocumentModel", back_populates="entity", uselist=False)
 
     __table_args__ = (
@@ -109,17 +108,6 @@ class EntityRelationModel(Base):
 
 
 # ===== Layer 2: Structure – Conversations =====
-
-class ConversationModel(Base):
-    __tablename__ = "conversations"
-
-    id = Column(Text, ForeignKey("entities.id", ondelete="CASCADE"), primary_key=True)
-    system_prompt = Column(Text, nullable=True)
-    last_model = Column(Text, nullable=True)
-    summary_text = Column(Text, nullable=True)
-
-    entity = relationship("EntityModel", back_populates="conversation")
-
 
 class TurnModel(Base):
     __tablename__ = "turns"
@@ -156,7 +144,7 @@ class ConversationSelectionModel(Base):
     __tablename__ = "conversation_selections"
 
     # Composite PK: (conversation_id, turn_id)
-    conversation_id = Column(Text, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False)
+    conversation_id = Column(Text, ForeignKey("entities.id", ondelete="CASCADE"), nullable=False)
     turn_id = Column(Text, ForeignKey("turns.id", ondelete="CASCADE"), nullable=False)
     span_id = Column(Text, ForeignKey("spans.id", ondelete="CASCADE"), nullable=False)
     sequence_number = Column(Integer, nullable=False)  # Order in the conversation's path

@@ -55,8 +55,6 @@ class ConversationStore(ABC):
         self,
         conversation_id: ConversationId,
         system_prompt: Optional[str] = None,
-        last_model: Optional[str] = None,
-        summary_text: Optional[str] = None,
     ) -> Conversation: ...
 
     @abstractmethod

@@ -26,8 +26,6 @@ class Conversation:
 
     entity: Entity
     system_prompt: Optional[str] = None
-    last_model: Optional[str] = None
-    summary_text: Optional[str] = None
 
     @property
     def id(self) -> ConversationId:
