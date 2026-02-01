@@ -1,7 +1,10 @@
 """Filesystem BlobStore — content-addressable blob storage.
 
 Implements BlobStore using sharded local filesystem storage with SHA-256
-content hashes. Files are stored at: {storage_root}/{hash[:2]}/{hash}{ext}
+content hashes. Files are stored at: {storage_root}/{hash[:2]}/{hash}
+
+Follows noema's convention: no file extensions in blob filenames.
+The mime_type is stored separately in the assets table.
 
 For S3 or other backends, implement the BlobStore protocol directly.
 """
@@ -16,31 +19,9 @@ import aiofiles.os
 from .protocol import BlobStore
 
 
-# Extension mapping for common MIME types
-_MIME_TO_EXT: dict[str, str] = {
-    "image/png": ".png",
-    "image/jpeg": ".jpg",
-    "image/jpg": ".jpg",
-    "image/gif": ".gif",
-    "image/webp": ".webp",
-    "audio/wav": ".wav",
-    "audio/mpeg": ".mp3",
-    "audio/mp3": ".mp3",
-    "audio/ogg": ".ogg",
-    "video/mp4": ".mp4",
-    "video/webm": ".webm",
-    "application/pdf": ".pdf",
-}
-
-
 def compute_hash(data: bytes) -> str:
     """Compute SHA-256 hash of data."""
     return hashlib.sha256(data).hexdigest()
-
-
-def extension_for_mime(mime_type: str) -> str:
-    """Get file extension for a MIME type."""
-    return _MIME_TO_EXT.get(mime_type, ".bin")
 
 
 class BlobStorage(BlobStore):
@@ -63,8 +44,7 @@ class BlobStorage(BlobStore):
     def relative_path(self, content_hash: str, mime_type: str) -> str:
         """Get the relative storage path for a content hash."""
         shard = content_hash[:2]
-        ext = extension_for_mime(mime_type)
-        return f"{shard}/{content_hash}{ext}"
+        return f"{shard}/{content_hash}"
 
     def absolute_path(self, relative_path: str) -> Path:
         """Get absolute path from relative path."""
