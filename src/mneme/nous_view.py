@@ -32,7 +32,7 @@ from nous.mcp import ToolExecutor
 from .content.media import store_media_from_result
 from .content.nous_bridge import nous_to_stored, stored_to_nous
 from .content.protocol import AssetStore, ContentStore
-from .ids import AssetId
+from .ids import AssetId, EntityId
 from .structure.conversation import Conversation
 from .structure.protocol import ConversationStore
 from .types import ContentOrigin, Role
@@ -142,8 +142,13 @@ class MnemeConversationView:
         self._text_buffer.append(text)
 
     async def on_content_block(self, block: NousContentBlock) -> None:
-        """Called when a complete non-text content block is ready. Override for streaming."""
-        pass
+        """Store media assets for later retrieval on conversation reload."""
+        if isinstance(block, (NousImageContent, NousAudioContent)) and block.data:
+            await self.asset_store.store_asset(
+                entity_id=EntityId.generate(),
+                data=base64.b64decode(block.data),
+                mime_type=block.mime_type,
+            )
 
     async def call_tool(self, tool_call: ToolCall) -> ToolResult:
         """Execute a tool call via nous ToolExecutor and store media assets."""
