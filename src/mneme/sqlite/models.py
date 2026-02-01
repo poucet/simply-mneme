@@ -250,6 +250,27 @@ class UserModel(Base):
     updated_at = Column(BigInteger, nullable=False, default=now_epoch_ms, onupdate=now_epoch_ms)
 
 
+# ===== Layer 2: Structure – MCP Servers =====
+
+class MCPServerModel(Base):
+    __tablename__ = "mcp_servers"
+
+    id = Column(Text, primary_key=True, default=new_uuid)
+    name = Column(Text, nullable=False, unique=True)
+    url = Column(Text, nullable=False)
+    enabled = Column(Boolean, nullable=False, default=True)
+    headers = Column(JSON, nullable=True)
+    approval_mode = Column(Text, nullable=False, default="manual")
+    auto_approve_tools = Column(JSON, nullable=False, default=list)
+    settings = Column(JSON, nullable=False, default=dict)
+    created_at = Column(BigInteger, nullable=False, default=now_epoch_ms)
+    updated_at = Column(BigInteger, nullable=False, default=now_epoch_ms, onupdate=now_epoch_ms)
+
+    __table_args__ = (
+        Index("ix_mcp_servers_name", "name", unique=True),
+    )
+
+
 # ===== Layer 3: Content =====
 
 class ContentBlockModel(Base):

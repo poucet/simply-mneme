@@ -1,12 +1,13 @@
-"""Structure layer abstract stores - ConversationStore, DocumentStore, UserStore."""
+"""Structure layer abstract stores - ConversationStore, DocumentStore, UserStore, MCPServerStore."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Any, Optional
 
 from ..ids import (
     AssetId,
     ConversationId,
     DocumentId,
+    MCPServerId,
     MessageId,
     RevisionId,
     SpanId,
@@ -18,6 +19,7 @@ from ..types import DocumentSource, Role
 from ..content.stored import StoredContent
 from .conversation import Conversation, Message, Span, Turn, TurnWithContent
 from .document import Document, Revision, Tab
+from .mcp_server import MCPServer
 from .user import User
 
 
@@ -297,3 +299,49 @@ class UserStore(ABC):
         user_id: UserId,
         email: Optional[str] = None,
     ) -> User: ...
+
+
+class MCPServerStore(ABC):
+    """Abstract store for MCP server configurations.
+
+    Manages server registrations with a unified approval model:
+        approval_mode: Server-level default ("manual" or "auto")
+        auto_approve_tools: Tool-level exceptions that skip approval
+    """
+
+    @abstractmethod
+    async def get_server(self, server_id: MCPServerId) -> Optional[MCPServer]: ...
+
+    @abstractmethod
+    async def get_server_by_name(self, name: str) -> Optional[MCPServer]: ...
+
+    @abstractmethod
+    async def list_servers(self, enabled_only: bool = False) -> list[MCPServer]: ...
+
+    @abstractmethod
+    async def create_server(
+        self,
+        name: str,
+        url: str,
+        enabled: bool = True,
+        headers: Optional[dict[str, str]] = None,
+        approval_mode: str = "manual",
+        auto_approve_tools: Optional[list[str]] = None,
+        settings: Optional[dict[str, Any]] = None,
+    ) -> MCPServer: ...
+
+    @abstractmethod
+    async def update_server(
+        self,
+        server_id: MCPServerId,
+        name: Optional[str] = None,
+        url: Optional[str] = None,
+        enabled: Optional[bool] = None,
+        headers: Optional[dict[str, str]] = None,
+        approval_mode: Optional[str] = None,
+        auto_approve_tools: Optional[list[str]] = None,
+        settings: Optional[dict[str, Any]] = None,
+    ) -> MCPServer: ...
+
+    @abstractmethod
+    async def delete_server(self, server_id: MCPServerId) -> bool: ...

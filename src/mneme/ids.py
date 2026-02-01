@@ -56,3 +56,4 @@ DocumentId = EntityId
 TabId = UUID
 RevisionId = UUID
 UserId = UUID
+MCPServerId = UUID

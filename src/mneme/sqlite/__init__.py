@@ -23,6 +23,7 @@ from .conversation_store import SqliteConversationStore
 from .database import close_database, create_engine, create_session_maker, init_database
 from .document_store import SqliteDocumentStore
 from .entity_store import SqliteEntityStore
+from .mcp_server_store import SqliteMCPServerStore
 from .user_store import SqliteUserStore
 
 
@@ -37,6 +38,7 @@ class SqliteStores:
         users: SqliteUserStore,
         content: SqliteContentStore,
         assets: SqliteAssetStore,
+        mcp_servers: SqliteMCPServerStore,
     ) -> None:
         self.entities = entities
         self.conversations = conversations
@@ -44,6 +46,7 @@ class SqliteStores:
         self.users = users
         self.content = content
         self.assets = assets
+        self.mcp_servers = mcp_servers
 
 
 def create_stores(db: AsyncSession, storage_root: Path) -> SqliteStores:
@@ -61,6 +64,7 @@ def create_stores(db: AsyncSession, storage_root: Path) -> SqliteStores:
         users=SqliteUserStore(db),
         content=SqliteContentStore(db),
         assets=SqliteAssetStore(db, blob_storage),
+        mcp_servers=SqliteMCPServerStore(db),
     )
 
 
@@ -72,6 +76,7 @@ __all__ = [
     "SqliteUserStore",
     "SqliteContentStore",
     "SqliteAssetStore",
+    "SqliteMCPServerStore",
     "create_stores",
     "create_engine",
     "create_session_maker",
