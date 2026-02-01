@@ -15,12 +15,15 @@ call_tool executes via nous ToolExecutor (if provided) and stores media assets.
 Requires the 'nous' optional dependency: pip install simply-mneme[nous]
 """
 
+import base64
 import logging
 from typing import Optional, TYPE_CHECKING
 
 from nous.types import Message as NousMessage
 from nous.types.content import (
+    AudioContent as NousAudioContent,
     ContentBlock as NousContentBlock,
+    ImageContent as NousImageContent,
     TextContent as NousTextContent,
 )
 from nous.types.tool import ToolCall, ToolResult
@@ -29,6 +32,7 @@ from nous.mcp import ToolExecutor
 from .content.media import store_media_from_result
 from .content.nous_bridge import nous_to_stored, stored_to_nous
 from .content.protocol import AssetStore, ContentStore
+from .ids import AssetId
 from .structure.conversation import Conversation
 from .structure.protocol import ConversationStore
 from .types import ContentOrigin, Role
@@ -157,9 +161,17 @@ class MnemeConversationView:
     async def add_message(self, message: NousMessage) -> None:
         """Buffer a message for later persistence.
 
-        Appends to the in-memory cache immediately (so get_messages() sees it)
-        but defers storage writes to on_turn_complete().
+        Resolves any unresolved asset references (asset_id without data)
+        before buffering, so the engine always sees complete content.
+        Defers storage writes to on_turn_complete().
         """
+        content = await self._resolve_assets(message.content)
+        if content is not message.content:
+            message = NousMessage(
+                id=message.id, role=message.role, content=content,
+                provider=message.provider, model=message.model,
+            )
+
         if self._messages is None:
             self._messages = []
         self._messages.append(message)
@@ -205,6 +217,33 @@ class MnemeConversationView:
     # =========================================================================
     # Helpers
     # =========================================================================
+
+    async def _resolve_assets(
+        self, blocks: list[NousContentBlock],
+    ) -> list[NousContentBlock]:
+        """Resolve unresolved asset references to base64 data.
+
+        Blocks with asset_id but no data are resolved from the asset
+        store. Returns the original list unchanged if nothing needed resolution.
+        """
+        result: list[NousContentBlock] | None = None
+
+        for i, block in enumerate(blocks):
+            if isinstance(block, (NousImageContent, NousAudioContent)):
+                if block.asset_id and not block.data:
+                    if result is None:
+                        result = list(blocks[:i])
+                    data = await self.asset_store.get_asset_data(
+                        AssetId(block.asset_id),
+                    )
+                    if data:
+                        b64 = base64.b64encode(data).decode("ascii")
+                        result.append(block.model_copy(update={"data": b64}))
+                    continue
+            if result is not None:
+                result.append(block)
+
+        return result if result is not None else blocks
 
     def get_accumulated_text(self) -> str:
         """Get all accumulated text from on_text_delta calls."""

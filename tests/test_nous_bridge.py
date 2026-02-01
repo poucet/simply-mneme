@@ -136,7 +136,7 @@ class TestStoredToNous:
         assert isinstance(blocks[0], NousImageContent)
         assert blocks[0].mime_type == "image/png"
         assert base64.b64decode(blocks[0].data) == raw
-        assert blocks[0].attachment_id == str(ref.asset_id)
+        assert blocks[0].asset_id == str(ref.asset_id)
 
     async def test_audio_asset_ref_resolves_to_audio_content(self, content_store, asset_store):
         raw = b"RIFF....WAVEfmt fake-audio"

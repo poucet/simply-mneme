@@ -104,8 +104,8 @@ async def _resolve_one(
                 return None
             b64 = base64.b64encode(data).decode("ascii")
             if mt.startswith("audio/"):
-                return NousAudioContent(mime_type=mt, data=b64, attachment_id=str(aid))
-            return NousImageContent(mime_type=mt, data=b64, attachment_id=str(aid))
+                return NousAudioContent(mime_type=mt, data=b64, asset_id=str(aid))
+            return NousImageContent(mime_type=mt, data=b64, asset_id=str(aid))
 
         case DocumentRef():
             # Document expansion is handled separately by ContentProcessor.
