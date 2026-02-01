@@ -23,6 +23,7 @@ from .models import (
     ConversationSelectionModel,
     EntityModel,
     EntityRelationModel,
+    MessageContentModel,
     MessageModel,
     SpanModel,
     TurnModel,
@@ -30,7 +31,7 @@ from .models import (
     new_uuid,
     now_epoch_ms,
 )
-from ._serde import deserialize_content, serialize_content
+from ._serde import rows_to_stored_content, stored_content_to_rows
 
 
 class SqliteConversationStore(ConversationStore):
@@ -60,12 +61,12 @@ class SqliteConversationStore(ConversationStore):
             created_at=epoch_ms_to_datetime(row.created_at),
         )
 
-    def _span_to_domain(self, row: SpanModel) -> Span:
+    def _span_to_domain(self, row: SpanModel, message_count: int = 0) -> Span:
         return Span(
             id=SpanId(row.id),
             turn_id=TurnId(row.turn_id),
             model_id=row.model_id,
-            message_count=row.message_count,
+            message_count=message_count,
             created_at=epoch_ms_to_datetime(row.created_at),
         )
 
@@ -73,15 +74,9 @@ class SqliteConversationStore(ConversationStore):
         return Message(
             id=row.id,
             span_id=SpanId(row.span_id),
-            sequence=row.sequence,
+            sequence=row.sequence_number,
             role=Role(row.role),
             created_at=epoch_ms_to_datetime(row.created_at),
-        )
-
-    def _message_with_content(self, row: MessageModel) -> MessageWithContent:
-        return MessageWithContent(
-            message=self._message_to_domain(row),
-            content=deserialize_content(row.content or []),
         )
 
     # -- Conversation management --
@@ -95,7 +90,7 @@ class SqliteConversationStore(ConversationStore):
         entity_id = new_uuid()
         entity_row = EntityModel(
             id=entity_id,
-            type=EntityType.CONVERSATION.value,
+            entity_type=EntityType.CONVERSATION.value,
             user_id=str(user_id),
             name=title,
         )
@@ -213,17 +208,27 @@ class SqliteConversationStore(ConversationStore):
             id=new_uuid(),
             turn_id=str(turn_id),
             model_id=model_id,
-            message_count=0,
         )
         self.db.add(row)
         await self.db.flush()
-        return self._span_to_domain(row)
+        return self._span_to_domain(row, message_count=0)
 
     async def get_spans(self, turn_id: TurnId) -> list[Span]:
-        result = await self.db.execute(
-            select(SpanModel).where(SpanModel.turn_id == str(turn_id))
+        # Compute message_count dynamically via subquery (matches noema pattern)
+        msg_count = (
+            select(func.count())
+            .where(MessageModel.span_id == SpanModel.id)
+            .correlate(SpanModel)
+            .scalar_subquery()
+            .label("message_count")
         )
-        return [self._span_to_domain(row) for row in result.scalars()]
+        result = await self.db.execute(
+            select(SpanModel, msg_count).where(SpanModel.turn_id == str(turn_id))
+        )
+        return [
+            self._span_to_domain(row, message_count=count)
+            for row, count in result.all()
+        ]
 
     async def add_message(
         self,
@@ -239,32 +244,41 @@ class SqliteConversationStore(ConversationStore):
         )
         sequence = result.scalar()
 
+        msg_id = new_uuid()
         row = MessageModel(
-            id=new_uuid(),
+            id=msg_id,
             span_id=str(span_id),
-            sequence=sequence,
+            sequence_number=sequence,
             role=role.value,
-            content=serialize_content(content),
         )
         self.db.add(row)
-
-        # Update span message count
-        span_result = await self.db.execute(
-            select(SpanModel).where(SpanModel.id == str(span_id))
-        )
-        span_row = span_result.scalar_one()
-        span_row.message_count = sequence + 1
-
         await self.db.flush()
+
+        # Insert content rows into message_content table
+        content_rows = stored_content_to_rows(msg_id, content)
+        for cr in content_rows:
+            self.db.add(cr)
+        if content_rows:
+            await self.db.flush()
+
         return self._message_to_domain(row)
 
     async def get_messages(self, span_id: SpanId) -> list[Message]:
         result = await self.db.execute(
             select(MessageModel)
             .where(MessageModel.span_id == str(span_id))
-            .order_by(MessageModel.sequence)
+            .order_by(MessageModel.sequence_number)
         )
         return [self._message_to_domain(row) for row in result.scalars()]
+
+    async def get_message_content(self, message_id: str) -> list[StoredContent]:
+        """Load content for a single message from the message_content table."""
+        result = await self.db.execute(
+            select(MessageContentModel)
+            .where(MessageContentModel.message_id == message_id)
+            .order_by(MessageContentModel.sequence_number)
+        )
+        return rows_to_stored_content(list(result.scalars()))
 
     # -- Selection management --
 
@@ -286,17 +300,16 @@ class SqliteConversationStore(ConversationStore):
             existing.span_id = str(span_id)
         else:
             pos_result = await self.db.execute(
-                select(func.coalesce(func.max(ConversationSelectionModel.position), -1))
+                select(func.coalesce(func.max(ConversationSelectionModel.sequence_number), -1))
                 .where(ConversationSelectionModel.conversation_id == str(conversation_id))
             )
             next_pos = pos_result.scalar() + 1
 
             row = ConversationSelectionModel(
-                id=new_uuid(),
                 conversation_id=str(conversation_id),
                 turn_id=str(turn_id),
                 span_id=str(span_id),
-                position=next_pos,
+                sequence_number=next_pos,
             )
             self.db.add(row)
 
@@ -323,7 +336,7 @@ class SqliteConversationStore(ConversationStore):
         sel_result = await self.db.execute(
             select(ConversationSelectionModel)
             .where(ConversationSelectionModel.conversation_id == str(conversation_id))
-            .order_by(ConversationSelectionModel.position)
+            .order_by(ConversationSelectionModel.sequence_number)
         )
         selections = list(sel_result.scalars())
         if not selections:
@@ -347,11 +360,27 @@ class SqliteConversationStore(ConversationStore):
         msg_result = await self.db.execute(
             select(MessageModel)
             .where(MessageModel.span_id.in_(span_ids))
-            .order_by(MessageModel.span_id, MessageModel.sequence)
+            .order_by(MessageModel.span_id, MessageModel.sequence_number)
         )
         messages_by_span: dict[str, list[MessageModel]] = {}
         for msg in msg_result.scalars():
             messages_by_span.setdefault(msg.span_id, []).append(msg)
+
+        # Batch-load all message content
+        all_message_ids = [
+            msg.id
+            for msgs in messages_by_span.values()
+            for msg in msgs
+        ]
+        content_by_message: dict[str, list[MessageContentModel]] = {}
+        if all_message_ids:
+            content_result = await self.db.execute(
+                select(MessageContentModel)
+                .where(MessageContentModel.message_id.in_(all_message_ids))
+                .order_by(MessageContentModel.message_id, MessageContentModel.sequence_number)
+            )
+            for row in content_result.scalars():
+                content_by_message.setdefault(row.message_id, []).append(row)
 
         # Assemble in selection order
         path = []
@@ -362,11 +391,17 @@ class SqliteConversationStore(ConversationStore):
                 continue
 
             msg_rows = messages_by_span.get(sel.span_id, [])
-            messages = [self._message_with_content(m) for m in msg_rows]
+            messages = [
+                MessageWithContent(
+                    message=self._message_to_domain(m),
+                    content=rows_to_stored_content(content_by_message.get(m.id, [])),
+                )
+                for m in msg_rows
+            ]
 
             path.append(TurnWithContent(
                 turn=self._turn_to_domain(turn_row),
-                span=self._span_to_domain(span_row),
+                span=self._span_to_domain(span_row, message_count=len(msg_rows)),
                 messages=messages,
             ))
 
@@ -400,7 +435,7 @@ class SqliteConversationStore(ConversationStore):
         entity_id = new_uuid()
         entity_row = EntityModel(
             id=entity_id,
-            type=EntityType.CONVERSATION.value,
+            entity_type=EntityType.CONVERSATION.value,
             user_id=str(original.entity.user_id) if original.entity.user_id else None,
             name=original.entity.name,
         )
@@ -421,10 +456,9 @@ class SqliteConversationStore(ConversationStore):
 
         # Track fork via entity relation
         relation_row = EntityRelationModel(
-            id=new_uuid(),
-            from_entity_id=entity_id,
-            to_entity_id=str(conversation_id),
-            relation_type=RelationType.FORKED_FROM.value,
+            from_id=entity_id,
+            to_id=str(conversation_id),
+            relation=RelationType.FORKED_FROM.value,
             metadata_={"at_turn_id": str(at_turn_id)},
         )
         self.db.add(relation_row)
@@ -443,7 +477,7 @@ class SqliteConversationStore(ConversationStore):
         sel_result = await self.db.execute(
             select(ConversationSelectionModel)
             .where(ConversationSelectionModel.conversation_id == str(from_conversation_id))
-            .order_by(ConversationSelectionModel.position)
+            .order_by(ConversationSelectionModel.sequence_number)
         )
         copied = 0
         for sel in sel_result.scalars():
@@ -451,11 +485,10 @@ class SqliteConversationStore(ConversationStore):
                 break
 
             new_sel = ConversationSelectionModel(
-                id=new_uuid(),
                 conversation_id=str(to_conversation_id),
                 turn_id=sel.turn_id,
                 span_id=sel.span_id,
-                position=copied,
+                sequence_number=copied,
             )
             self.db.add(new_sel)
             copied += 1

@@ -82,7 +82,7 @@ class SqliteDocumentStore(DocumentStore):
         entity_id = new_uuid()
         entity_row = EntityModel(
             id=entity_id,
-            type=EntityType.DOCUMENT.value,
+            entity_type=EntityType.DOCUMENT.value,
             user_id=str(user_id),
             name=title,
         )
@@ -91,6 +91,8 @@ class SqliteDocumentStore(DocumentStore):
 
         doc_row = DocumentModel(
             id=entity_id,
+            user_id=str(user_id),
+            title=title,
             source=source.value,
             source_id=source_id,
         )

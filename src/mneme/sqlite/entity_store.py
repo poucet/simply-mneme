@@ -32,7 +32,7 @@ class SqliteEntityStore(EntityStore):
     def _to_domain(self, row: EntityModel) -> Entity:
         return Entity(
             id=EntityId(row.id),
-            type=EntityType(row.type),
+            type=EntityType(row.entity_type),
             user_id=parse_uuid(row.user_id),
             name=row.name,
             slug=row.slug,
@@ -45,9 +45,9 @@ class SqliteEntityStore(EntityStore):
 
     def _relation_to_domain(self, row: EntityRelationModel) -> EntityRelation:
         return EntityRelation(
-            from_entity_id=EntityId(row.from_entity_id),
-            to_entity_id=EntityId(row.to_entity_id),
-            relation_type=RelationType(row.relation_type),
+            from_entity_id=EntityId(row.from_id),
+            to_entity_id=EntityId(row.to_id),
+            relation_type=RelationType(row.relation),
             metadata=row.metadata_,
             created_at=epoch_ms_to_datetime(row.created_at),
         )
@@ -65,7 +65,7 @@ class SqliteEntityStore(EntityStore):
     ) -> Entity:
         row = EntityModel(
             id=new_uuid(),
-            type=entity_type.value,
+            entity_type=entity_type.value,
             user_id=str(user_id) if user_id else None,
             name=name,
             slug=slug,
@@ -102,7 +102,7 @@ class SqliteEntityStore(EntityStore):
             EntityModel.is_archived == False,
         )
         if entity_type is not None:
-            stmt = stmt.where(EntityModel.type == entity_type.value)
+            stmt = stmt.where(EntityModel.entity_type == entity_type.value)
         stmt = stmt.order_by(EntityModel.updated_at.desc())
         if offset:
             stmt = stmt.offset(offset)
@@ -166,10 +166,9 @@ class SqliteEntityStore(EntityStore):
         metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         row = EntityRelationModel(
-            id=new_uuid(),
-            from_entity_id=str(from_id),
-            to_entity_id=str(to_id),
-            relation_type=relation_type.value,
+            from_id=str(from_id),
+            to_id=str(to_id),
+            relation=relation_type.value,
             metadata_=metadata,
         )
         self.db.add(row)
@@ -181,14 +180,14 @@ class SqliteEntityStore(EntityStore):
         relation_type: Optional[RelationType] = None,
     ) -> list[tuple[EntityId, EntityRelation]]:
         stmt = select(EntityRelationModel).where(
-            EntityRelationModel.from_entity_id == str(entity_id)
+            EntityRelationModel.from_id == str(entity_id)
         )
         if relation_type is not None:
-            stmt = stmt.where(EntityRelationModel.relation_type == relation_type.value)
+            stmt = stmt.where(EntityRelationModel.relation == relation_type.value)
 
         result = await self.db.execute(stmt)
         return [
-            (EntityId(row.to_entity_id), self._relation_to_domain(row))
+            (EntityId(row.to_id), self._relation_to_domain(row))
             for row in result.scalars()
         ]
 
@@ -198,14 +197,14 @@ class SqliteEntityStore(EntityStore):
         relation_type: Optional[RelationType] = None,
     ) -> list[tuple[EntityId, EntityRelation]]:
         stmt = select(EntityRelationModel).where(
-            EntityRelationModel.to_entity_id == str(entity_id)
+            EntityRelationModel.to_id == str(entity_id)
         )
         if relation_type is not None:
-            stmt = stmt.where(EntityRelationModel.relation_type == relation_type.value)
+            stmt = stmt.where(EntityRelationModel.relation == relation_type.value)
 
         result = await self.db.execute(stmt)
         return [
-            (EntityId(row.from_entity_id), self._relation_to_domain(row))
+            (EntityId(row.from_id), self._relation_to_domain(row))
             for row in result.scalars()
         ]
 
@@ -217,9 +216,9 @@ class SqliteEntityStore(EntityStore):
     ) -> None:
         await self.db.execute(
             delete(EntityRelationModel).where(
-                EntityRelationModel.from_entity_id == str(from_id),
-                EntityRelationModel.to_entity_id == str(to_id),
-                EntityRelationModel.relation_type == relation_type.value,
+                EntityRelationModel.from_id == str(from_id),
+                EntityRelationModel.to_id == str(to_id),
+                EntityRelationModel.relation == relation_type.value,
             )
         )
         await self.db.flush()

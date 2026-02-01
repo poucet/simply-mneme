@@ -5,6 +5,8 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import hashlib
+
 from ..content.protocol import ContentStore
 from ..ids import ContentBlockId
 from ..types import ContentOrigin
@@ -22,8 +24,8 @@ class SqliteContentStore(ContentStore):
         return ContentBlock(
             id=ContentBlockId(row.id),
             text=row.text,
-            origin=ContentOrigin(row.origin),
-            model_id=row.model_id,
+            origin=ContentOrigin(row.origin_kind),
+            model_id=row.origin_model_id,
             created_at=epoch_ms_to_datetime(row.created_at),
         )
 
@@ -34,11 +36,15 @@ class SqliteContentStore(ContentStore):
         model_id: Optional[str] = None,
     ) -> ContentBlockId:
         block_id = new_uuid()
+        content_hash = hashlib.sha256(text.encode()).hexdigest()
         row = ContentBlockModel(
             id=block_id,
+            content_hash=content_hash,
+            content_type="plain",
             text=text,
-            origin=origin.value,
-            model_id=model_id,
+            is_private=False,
+            origin_kind=origin.value,
+            origin_model_id=model_id,
         )
         self.db.add(row)
         await self.db.flush()

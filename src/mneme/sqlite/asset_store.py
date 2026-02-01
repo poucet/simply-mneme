@@ -32,12 +32,12 @@ class SqliteAssetStore(AssetStore):
         original_filename: Optional[str] = None,
     ) -> AssetRef:
         # Store blob (deduplicates by content hash)
-        content_hash, relative_path = await self.blob_storage.store(data, mime_type)
+        blob_hash, _relative_path = await self.blob_storage.store(data, mime_type)
 
         # Create entity for the asset
         entity_row = EntityModel(
             id=str(entity_id),
-            type=EntityType.ASSET.value,
+            entity_type=EntityType.ASSET.value,
             name=original_filename,
         )
         self.db.add(entity_row)
@@ -46,11 +46,10 @@ class SqliteAssetStore(AssetStore):
         # Create asset record
         asset_row = AssetModel(
             id=str(entity_id),
+            blob_hash=blob_hash,
             mime_type=mime_type,
-            content_hash=content_hash,
-            file_size=len(data),
-            original_filename=original_filename,
-            storage_path=relative_path,
+            size_bytes=len(data),
+            is_private=False,
         )
         self.db.add(asset_row)
         await self.db.flush()
@@ -65,23 +64,29 @@ class SqliteAssetStore(AssetStore):
         if row is None:
             return None
 
-        return await self.blob_storage.retrieve(row.storage_path)
+        # Derive path from hash + mime_type (content-addressable)
+        return await self.blob_storage.retrieve_by_hash(row.blob_hash, row.mime_type)
 
     async def get_asset_metadata(self, asset_id: AssetId) -> Optional[dict]:
         result = await self.db.execute(
-            select(AssetModel).where(AssetModel.id == str(asset_id))
+            select(AssetModel, EntityModel)
+            .outerjoin(EntityModel, AssetModel.id == EntityModel.id)
+            .where(AssetModel.id == str(asset_id))
         )
-        row = result.scalar_one_or_none()
+        row = result.one_or_none()
         if row is None:
             return None
+        asset_row, entity_row = row
 
         return {
-            "id": row.id,
-            "mime_type": row.mime_type,
-            "content_hash": row.content_hash,
-            "file_size": row.file_size,
-            "original_filename": row.original_filename,
-            "created_at": epoch_ms_to_datetime(row.created_at),
+            "id": asset_row.id,
+            "mime_type": asset_row.mime_type,
+            "blob_hash": asset_row.blob_hash,
+            "size_bytes": asset_row.size_bytes,
+            "file_size": asset_row.size_bytes,  # backward compat alias
+            "is_private": asset_row.is_private,
+            "original_filename": entity_row.name if entity_row else None,
+            "created_at": epoch_ms_to_datetime(asset_row.created_at),
         }
 
     async def delete_asset(self, asset_id: AssetId) -> bool:
