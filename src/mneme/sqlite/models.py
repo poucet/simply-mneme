@@ -271,6 +271,33 @@ class MCPServerModel(Base):
     )
 
 
+# ===== Layer 2: Structure – OAuth Connections =====
+
+class OAuthConnectionModel(Base):
+    __tablename__ = "oauth_connections"
+
+    id = Column(Text, primary_key=True, default=new_uuid)
+    user_id = Column(Text, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    provider = Column(Text, nullable=False)
+    provider_user_id = Column(Text, nullable=True)
+    provider_email = Column(Text, nullable=True)
+    scopes = Column(JSON, nullable=False, default=list)
+    access_token = Column(Text, nullable=False)
+    refresh_token = Column(Text, nullable=True)
+    token_expires_at = Column(BigInteger, nullable=True)  # Epoch ms
+    connection_name = Column(Text, nullable=True)
+    provider_metadata = Column(JSON, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(BigInteger, nullable=False, default=now_epoch_ms)
+    updated_at = Column(BigInteger, nullable=False, default=now_epoch_ms)
+    last_used_at = Column(BigInteger, nullable=True)  # Epoch ms
+
+    __table_args__ = (
+        Index("ix_oauth_connections_user_provider", "user_id", "provider"),
+        Index("ix_oauth_connections_user_provider_active", "user_id", "provider", "is_active"),
+    )
+
+
 # ===== Layer 3: Content =====
 
 class ContentBlockModel(Base):

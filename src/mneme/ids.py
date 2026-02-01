@@ -57,3 +57,4 @@ TabId = UUID
 RevisionId = UUID
 UserId = UUID
 MCPServerId = UUID
+OAuthConnectionId = UUID

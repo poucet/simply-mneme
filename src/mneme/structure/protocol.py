@@ -1,6 +1,7 @@
-"""Structure layer abstract stores - ConversationStore, DocumentStore, UserStore, MCPServerStore."""
+"""Structure layer abstract stores."""
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Any, Optional
 
 from ..ids import (
@@ -9,6 +10,7 @@ from ..ids import (
     DocumentId,
     MCPServerId,
     MessageId,
+    OAuthConnectionId,
     RevisionId,
     SpanId,
     TabId,
@@ -20,6 +22,7 @@ from ..content.stored import StoredContent
 from .conversation import Conversation, Message, Span, Turn, TurnWithContent
 from .document import Document, Revision, Tab
 from .mcp_server import MCPServer
+from .oauth_connection import OAuthConnection
 from .user import User
 
 
@@ -345,3 +348,53 @@ class MCPServerStore(ABC):
 
     @abstractmethod
     async def delete_server(self, server_id: MCPServerId) -> bool: ...
+
+
+class OAuthConnectionStore(ABC):
+    """Abstract store for OAuth connections to external providers.
+
+    Handles CRUD for OAuth credentials (tokens, scopes, provider metadata).
+    Business logic like token refresh is handled by consumers (e.g. OAuthManager).
+    """
+
+    @abstractmethod
+    async def create_connection(self, connection: OAuthConnection) -> OAuthConnection: ...
+
+    @abstractmethod
+    async def get_connection(self, connection_id: OAuthConnectionId) -> Optional[OAuthConnection]: ...
+
+    @abstractmethod
+    async def get_user_connections(
+        self,
+        user_id: UserId,
+        provider: Optional[str] = None,
+        active_only: bool = True,
+    ) -> list[OAuthConnection]: ...
+
+    @abstractmethod
+    async def get_active_connection(
+        self,
+        user_id: UserId,
+        provider: str,
+        required_scopes: Optional[list[str]] = None,
+    ) -> Optional[OAuthConnection]: ...
+
+    @abstractmethod
+    async def update_connection(
+        self,
+        connection_id: OAuthConnectionId,
+        access_token: Optional[str] = None,
+        refresh_token: Optional[str] = None,
+        token_expires_at: Optional[datetime] = None,
+        is_active: Optional[bool] = None,
+    ) -> Optional[OAuthConnection]: ...
+
+    @abstractmethod
+    async def delete_connection(
+        self,
+        connection_id: OAuthConnectionId,
+        user_id: UserId,
+    ) -> bool: ...
+
+    @abstractmethod
+    async def update_last_used(self, connection_id: OAuthConnectionId) -> None: ...
