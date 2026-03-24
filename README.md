@@ -1,6 +1,6 @@
 # mneme
 
-Storage layer implementing the Unified Content Model (UCM) for [noema](https://github.com/anthropics/noema). Mneme provides persistent, content-addressed storage for conversations, documents, and assets using a three-layer architecture.
+Storage layer implementing the Unified Content Model (UCM) for [noema](https://github.com/poucet/noema). Mneme provides persistent, content-addressed storage for conversations, documents, and assets using a three-layer architecture.
 
 ## Architecture
 
@@ -18,7 +18,7 @@ Mneme organizes storage into three layers:
 pip install simply-mneme
 ```
 
-With [nous](https://github.com/anthropics/nous) integration:
+With [nous](https://github.com/poucet/simply-nous) integration:
 
 ```bash
 pip install simply-mneme[nous]
