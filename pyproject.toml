@@ -13,7 +13,7 @@ dependencies = [
 nous = ["simply-nous"]
 
 [tool.uv.sources]
-simply-nous = { path = "../nous", editable = true }
+simply-nous = { path = "nous", editable = true }
 
 [build-system]
 requires = ["hatchling"]

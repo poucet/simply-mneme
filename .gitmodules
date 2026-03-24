@@ -1,0 +1,3 @@
+[submodule "nous"]
+	path = nous
+	url = https://github.com/poucet/simply-nous
